@@ -37,23 +37,37 @@ f = zeros(N,1);
 Aeq = ones(1,N);
 beq = 1.0;
 % 2nd Constraint: short sales
-A = zeros(N);
-b = zeros(N,1);
-[weights1, sigma1] = quadprog(H, f, A, b, Aeq,beq, [], [], [], []);
+A_short = zeros(N);
+b_short = zeros(N,1);
+[weightsTotalShort, sigmaTotalShort] = quadprog(H, f, A_short, b_short, Aeq,beq, [], [], [], []);
 
 
 % 2nd Constraint: no short sales
-A = -eye(N);
-b = zeros(N,1);
-[weights2, sigma2] = quadprog(H, f, A, b, Aeq,beq, [], [], [], []);
+A_noShort = -eye(N);
+b_noShort = zeros(N,1);
+[weightsTotalNoShort, sigmaTotalNoShort] = quadprog(H, f, A_noShort, b_noShort, Aeq,beq, [], [], [], []);
 
 %% Question 3
 d=dates(1:end-13);
 windowSize=5;
-inRange=zeros(length(d),length(breakDates)-windowSize);
-for i=1:length(breakDates)-windowSize
+numWindows=length(breakDates)-windowSize;
+rollingLogRets=cell(numWindows,1);
+inRange=zeros(length(d),numWindows);
+numDays=zeros(numWindows,1);
+covMatWindow=cell(numWindows,1);
+for i=1:numWindows
+    %splitting into rolling windows
     inRange(:,i)=(d>breakDates(i))&(d<breakDates(i+windowSize));
     rows=find(inRange(:,i));
     rollingLogRets{i}=logRets(rows,:);
+    covMatWindow{i}=cov(rollingLogRets{i});
+    
+    %finding MVP
+    numDays(i)=length(rollingLogRets{i});
+    H = 2.0 * covMatWindow{i};
+    
+    [weightsWindowShort{i}, sigmaWindowShort{i}] = quadprog(H, f, A_short, b_short, Aeq,beq, [], [], [], []);
+    
+    [weightsWindowNoShort{i}, sigmaWindowNoShort{i}] = quadprog(H, f, A_noShort, b_noShort, Aeq,beq, [], [], [], []);
 end
 
