@@ -1,0 +1,143 @@
+%% 1Q
+price=xlsread('PS1_data.xls',2,'E4:L5855');
+exchange=xlsread('PS1_data.xls',2,'N4:U5855');
+priceNew=price.*exchange;
+rets=diff(log(priceNew));
+rets(4:7:5851,:)=[];
+rets(4:6:5015,:)=[];
+mu=mean(rets);
+Std=std(rets);
+Skew=skewness(rets);
+Kurt=kurtosis(rets);
+%% AUTO/CORR
+AutoTSX=autocorr(rets(:,1)); 
+AutoCAC=autocorr(rets(:,2)); 
+AutoDAX=autocorr(rets(:,3)); 
+AutoEUR=autocorr(rets(:,4)); 
+AutoNIK=autocorr(rets(:,5)); 
+AutoFTS=autocorr(rets(:,6)); 
+AutoSP5=autocorr(rets(:,7)); 
+AutoIBO=autocorr(rets(:,8)); 
+Auto=[AutoTSX,AutoCAC,AutoDAX,AutoEUR,AutoNIK,AutoFTS,AutoSP5,AutoIBO];
+%correlation
+co=corr(rets);
+%JB test
+[h1,p1]=jbtest(rets(:,1));
+[h2,p2]=jbtest(rets(:,2));
+[h3,p3]=jbtest(rets(:,3));
+[h4,p4]=jbtest(rets(:,4));
+[h5,p5]=jbtest(rets(:,5));
+[h6,p6]=jbtest(rets(:,6));
+[h7,p7]=jbtest(rets(:,7));
+[h8,p8]=jbtest(rets(:,8));
+p=[p1;p2;p3;p4;p5;p6;p7;p8];
+
+%% 2Q
+N=size(rets,2);
+mu=mean(rets);
+cov_mat=cov(rets);
+%Find the mimimum variance portfolio
+H=2.0*cov_mat;
+f=zeros(N,1);
+Aeq=ones(1,N);                                  %1st Constraint:weights sum to one
+beq=1.0;                                        
+A=zeros(N);                                     %2nd Constraint:short sales allowed
+b=zeros(N,1);
+[w1,s1]=quadprog(H,f,A,b,Aeq,beq,[],[],[]);     %portfolio weight and portfolio variance
+retsAnnu=sum(rets)/16;                          %annulised data
+stdAnnu=sqrt(252)*std(rets);
+cov_matAnnu=stdAnnu'*stdAnnu.*co;
+%Construct efficient frontier
+targetRet=-0.20:0.003:0.40;
+M=length(targetRet);
+pstdev=zeros(M,1);
+prets=zeros(M,1);
+
+for i=1:M;
+    H=2*cov_matAnnu;
+    f=zeros(N,1);
+    Aeq=[ones(1,N);retsAnnu];
+    beq=[1;targetRet(1,i)];
+    A=zeros(N);
+    b=zeros(N,1);
+    [wj,sj]=quadprog(H,f,A,b,Aeq,beq,[],[],[]);
+    prets(i,1)=retsAnnu*wj;
+    pstdev(i,1)=sqrt(sj);
+end
+
+%maximize sharpe ratio
+%rf=0.02
+Aeq = ones(1,N);
+beq = 1;
+w0 = ones(N,1)*(1/N);
+tanWeight=fmincon(@(w)-compute_sharpe(w, retsAnnu', cov_matAnnu), w0, [], [], Aeq, beq, [], [], []);
+sr1 = compute_sharpe(tanWeight,retsAnnu',cov_matAnnu);
+fprintf('The maximized Sharpe Ratio is %.4f.\n', sr1);
+tanRet=retsAnnu*tanWeight;
+tanStd=sqrt(compute_pvar(tanWeight,cov_matAnnu));
+
+figure(1);
+line([0,tanStd], [0.02,tanRet])
+hold on 
+plot(pstdev, prets)
+hold on
+scatter(stdAnnu(1:end), retsAnnu(1:end), 40, 'filled');
+scatter(tanStd,tanRet,'k','filled')
+title('Efficient Frontier')
+xlabel('Risk (%)');
+ylabel('Return (%)');
+
+
+%Change into no short sales constraint
+A=-eye(N);
+b=zeros(N,1);
+[w2,s2]=quadprog(H,f,A,b,Aeq,beq,[],[],[]);
+
+targetRet=-0.02:0.003:0.0285;
+M=length(targetRet);
+pstdev=zeros(M,1);
+prets=zeros(M,1);
+
+for i=1:M;
+    H=2*cov_matAnnu;
+    f=zeros(N,1);
+    Aeq=[ones(1,N);retsAnnu];
+    beq=[1;targetRet(1,i)];
+    A=-eye(N);
+    b=zeros(N,1);
+    [wj,sj]=quadprog(H,f,A,b,Aeq,beq,[],[],[]);
+    prets(i,1)=retsAnnu*wj;
+    pstdev(i,1)=sqrt(sj);
+end
+
+%maximize sharpe ratio
+%rf=0.02
+Aeq = ones(1,N);
+beq = 1;
+A=-eye(N);
+b=zeros(N,1);
+w0 = ones(N,1)*(1/N);
+tanWeight2=fmincon(@(w)-compute_sharpe(w, retsAnnu', cov_matAnnu), w0, A, b, Aeq, beq, [], [], []);
+sr2 = compute_sharpe(tanWeight2,retsAnnu',cov_matAnnu);
+fprintf('The maximized Sharpe Ratio Without ShortSelling is %.4f.\n', sr2);
+tanRet2=retsAnnu*tanWeight2;
+tanStd2=sqrt(compute_pvar(tanWeight2,cov_matAnnu));
+
+figure(2);
+line([0,tanStd2], [0.02,tanRet2])
+hold on 
+plot(pstdev, prets)
+hold on
+scatter(stdAnnu(1:end), retsAnnu(1:end), 40, 'filled');
+scatter(tanStd2,tanRet2,'k','filled')
+title('Efficient Frontier')
+xlabel('Risk (%)');
+ylabel('Return (%)');
+
+
+
+
+
+
+
+
